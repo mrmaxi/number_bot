@@ -85,7 +85,7 @@ def multi2(bot, update, user_data):
     if user_data.get('choice') == 'multi2':
         ans = update.message.text.lower().strip()
         q = user_data['q']
-        r = user_data['r']
+        r = list(map(tuple, user_data['r']))
         question = user_data['question']
         right_answer = user_data['right_answer']
 
