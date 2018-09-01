@@ -30,7 +30,10 @@ reply_keyboard = [['guess number', 'multi1'],
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
 
-def start(bot, update):
+def start(bot, update, user_data):
+    user_data.clear()
+    user_data.save()
+
     update.message.reply_text(
         "Hi! My name is number-bot. I offer you to play several useful games!"
         "Please, choose what game you prefer?",
@@ -226,9 +229,7 @@ def done(bot, update, user_data):
     else:
         update.message.reply_text("Bye bye!")
 
-    user_data.clear()
-    user_data.save()
-    return start(bot, update)
+    return start(bot, update, user_data)
 
 
 def error(bot, update, error):
@@ -252,7 +253,7 @@ def main():
     # Add conversation handler with the states GENDER, PHOTO, LOCATION and BIO
     conv_handler = ConversationHandler(
         allow_reentry=True,
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler('start', start, pass_user_data=True)],
 
         states={
             CHOOSING: [RegexHandler('^(guess number)$',
