@@ -42,13 +42,12 @@ def start(bot, update, user_data):
     return CHOOSING
 
 
-def multi1(bot, update, user_data):
-    if user_data.get('choice') == 'multi1':
-        ans = update.message.text.lower().strip()
-        right_answer = user_data['right_answer']
-        question = user_data['question']
-        if ans != right_answer:
-            update.message.reply_text(f"{ans}? wrong! {question} = {right_answer}")
+def new_multi1():
+    """
+        Таблица умножения.
+        - Умножение одного числа на другое
+        - Деление чисел из таблицы на один из множителей
+    """
 
     m = randint(1, 9)
     n = randint(1, 9)
@@ -60,14 +59,19 @@ def multi1(bot, update, user_data):
         question = f'{mul} : {n} = ?'
         right_answer = str(m)
 
-    user_data.update({
-        'choice': 'multi1',
+    return {
+        'quest_type': 'multi1',
         'question': question,
-        'right_answer': right_answer})
-    user_data.save()
-    update.message.reply_text(question)
+        'right_answer': right_answer
+    }
 
-    return MULTI1
+
+def test_multi1(user_data, ans):
+    right_answer = user_data['right_answer']
+    question = user_data['question']
+    if ans != right_answer:
+        return f"{ans}? wrong! {question} = {right_answer}"
+    return None
 
 
 multiple_table = {}
@@ -81,46 +85,51 @@ for q, r in multiple_table.items():
     arr.append(q)
 
 
-def multi2(bot, update, user_data):
-    if user_data.get('choice') == 'multi2':
-        ans = update.message.text.lower().strip()
-        q = user_data['q']
-        r = list(map(tuple, user_data['r']))
-        question = user_data['question']
-        right_answer = user_data['right_answer']
-
-        if not ans.replace(' ', '').isdecimal():
-            ans = ''.join([c if c.isdecimal() else ' ' for c in ans])
-
-        while '  ' in ans:
-            ans = ans.replace('  ', ' ')
-
-        a = list(map(int, ans.split(' ')))
-        if not len(a) or len(a) % 2:
-            update.message.reply_text(f"{ans}? wrong! {q} = {right_answer}")
-        else:
-            b = sorted([tuple(sorted([n, m])) for n, m in zip(a[::2], a[1::2])])
-            if b != r:
-                update.message.reply_text(f"{ans}? wrong! {q} = {right_answer}")
+def new_multi2():
+    """
+        Обратная таблица умножения
+        Необходимо угадать что на что надо умножить, чтобы получилось заданное число из таблицы умножения
+        возможны несколько вариантов ответа, необходимо назвать их все
+    """
 
     q, r = list(multiple_table_r.items())[randint(0, len(multiple_table_r) - 1)]
     a = '; '.join(['? x ?'] * len(r))
     question = f"{q} = {a}"
     right_answer = '; '.join(map(lambda n: f'{n[0]} x {n[1]}', multiple_table_r[q]))
 
-    user_data.update({
-        'choice': 'multi2',
+    return {
+        'quest_type': 'multi2',
         'q': q,
         'r': r,
         'question': question,
-        'right_answer': right_answer})
-    user_data.save()
-    update.message.reply_text(question)
+        'right_answer': right_answer
+    }
 
-    return MULTI2
+
+def test_multi2(user_data, ans):
+    q = user_data['q']
+    r = list(map(tuple, user_data['r']))
+    right_answer = user_data['right_answer']
+
+    if not ans.replace(' ', '').isdecimal():
+        ans = ''.join([c if c.isdecimal() else ' ' for c in ans])
+
+    while '  ' in ans:
+        ans = ans.replace('  ', ' ')
+
+    a = list(map(int, ans.split(' ')))
+    if not len(a) or len(a) % 2:
+        return f"{ans}? wrong! {q} = {right_answer}"
+    else:
+        b = sorted([tuple(sorted([n, m])) for n, m in zip(a[::2], a[1::2])])
+        if b != r:
+            return f"{ans}? wrong! {q} = {right_answer}"
+
+    return None
 
 
 question_table = []
+
 
 def my_variants(b, a=()):
     if b:
@@ -133,44 +142,73 @@ def my_variants(b, a=()):
 
 for r, q in multiple_table_r.items():
     question_table.append({
+        'quest_type': 'multi3',
         'question': f'{r}'+'\n= ? x ?'*len(q),
         'right_answer': f'{r}'+''.join(map(lambda a: f'\n= {a[0]} x {a[1]}', q)),
-        'answers': list(chain(*[list(my_variants(a)) for a in permutations(q, len(q))]))
+        'answers': list(set(chain(*[list(my_variants(a)) for a in permutations(q, len(q))])))
     })
 
 
-def multi3(bot, update, user_data):
-    if user_data.get('choice') == 'multi3':
-        ans = update.message.text.lower().strip()
-        question = user_data['question']
-        right_answer = user_data['right_answer']
-        answers = user_data['answers']
+def new_multi3():
+    return question_table[randint(0, len(question_table) - 1)]
 
-        def str2tuple(s):
-            if not s.replace(' ', '').isdecimal():
-                s = ''.join([c if c.isdecimal() else ' ' for c in s])
-            while '  ' in s:
-                s = s.replace('  ', ' ')
-            return tuple(map(int, s.strip().split(' ')))
 
-        a = tuple(map(str2tuple, ans.splitlines()))
+def str2tuple(s):
+    if not s.replace(' ', '').isdecimal():
+        s = ''.join([c if c.isdecimal() else ' ' for c in s])
+    while '  ' in s:
+        s = s.replace('  ', ' ')
+    return tuple(map(int, s.strip().split(' ')))
 
-        if a and (a in answers or (len(a) == 1 and a[0] in answers)):
-            return True
-        else:
-            logger.info(answers)
-            logger.error(a)
 
-            update.message.reply_text(f'{ans}? wrong! {right_answer}')
-            return False
+def test_multi3(user_data, ans):
+    right_answer = user_data['right_answer']
+    answers = user_data['answers']
 
-    q = question_table[randint(0, len(question_table) - 1)]
-    user_data['choice'] = 'multi3'
-    user_data.update(q)
+    a = tuple(map(str2tuple, ans.splitlines()))
+
+    if a and (a in answers or (len(a) == 1 and a[0] in answers)):
+        return None
+    else:
+        logger.info(answers)
+        logger.error(a)
+        return f'{ans}? wrong! {right_answer}'
+
+
+def test_answer(update, user_data, quest_type, test_func):
+    if user_data.get('quest_type', user_data.get('choice')) == quest_type:
+        r = test_func(user_data, update.message.text.lower().strip())
+        if r:
+            update.message.reply_text(r)
+
+
+def ask_question(update, user_data, choice_name, new_quest, ret):
+    user_data['choice'] = choice_name
+    user_data.update(new_quest)
     user_data.save()
+    update.message.reply_text(new_quest['question'])
+    return ret
 
-    update.message.reply_text(q['question'])
-    return MULTI3
+
+def multi1(bot, update, user_data):
+    test_answer(update, user_data, 'multi1', test_multi1)
+
+    new_quest = new_multi1()
+    return ask_question(update, user_data, 'multi1', new_quest, MULTI1)
+
+
+def multi2(bot, update, user_data):
+    test_answer(update, user_data, 'multi2', test_multi2)
+
+    new_quest = new_multi2()
+    return ask_question(update, user_data, 'multi2', new_quest, MULTI2)
+
+
+def multi3(bot, update, user_data):
+    test_answer(update, user_data, 'multi3', test_multi3)
+
+    new_quest = new_multi3()
+    return ask_question(update, user_data, 'multi3', new_quest, MULTI3)
 
 
 def calc_nums(num1, num2):
@@ -266,7 +304,7 @@ def main():
                                     multi2,
                                     pass_user_data=True),
                        RegexHandler('^(multi3)$',
-                                    multi1,
+                                    multi3,
                                     pass_user_data=True),
                        ],
 
