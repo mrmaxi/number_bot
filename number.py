@@ -216,7 +216,7 @@ def new_two_actions():
     elif v == 2:
         b_c = 1 + round(abs(normalvariate(0, 10)))
         a = round(abs(normalvariate(0, 30)))
-        c = round(abs(normalvariate(0, 30)))
+        c = 1+ round(abs(normalvariate(0, 30)))
         b = b_c * c
 
         return {
@@ -227,7 +227,7 @@ def new_two_actions():
     elif v == 3:
         b_c = 1 + round(abs(normalvariate(0, 10)))
         a = b_c + round(abs(normalvariate(0, 30)))
-        c = round(abs(normalvariate(0, 10)))
+        c = 1 + round(abs(normalvariate(0, 10)))
         b = b_c * c
 
         return {
@@ -256,7 +256,7 @@ def new_two_actions():
         }
     elif v == 6:
         ab_c = 1+round(abs(normalvariate(0, 10)))
-        c = round(abs(normalvariate(0, 10)))
+        c = 1 + round(abs(normalvariate(0, 10)))
         ab = ab_c * c
         a = randint(1, ab)
         b = ab - a
@@ -268,7 +268,7 @@ def new_two_actions():
         }
     elif v == 7:
         ab_c = 1 + round(abs(normalvariate(0, 10)))
-        c = round(abs(normalvariate(0, 10)))
+        c = 1 + round(abs(normalvariate(0, 10)))
         ab = ab_c * c
         a = ab + round(abs(normalvariate(0, 30)))
         b = a - ab
