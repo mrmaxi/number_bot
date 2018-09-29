@@ -5,7 +5,7 @@
 # This program is dedicated to the public domain under the CC0 license.
 
 from os import environ
-from random import randint
+from random import randint, normalvariate
 from itertools import chain, permutations
 
 from telegram import ReplyKeyboardMarkup
@@ -23,10 +23,14 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
-CHOOSING, GUESS_NUMBER, MULTI1, MULTI2, MULTI3, RANDOM = range(6)
+CHOOSING, GUESS_NUMBER, MULTI1, MULTI2, MULTI3, TWO_ACTIONS, RANDOM = range(7)
 
-reply_keyboard = [['guess number', 'multi1'],
-                  ['multi2', 'random']]
+reply_keyboard = [
+    ['guess number', 'multi1'],
+    ['multi2', 'two_actions'],
+    ['random']
+]
+
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
 
@@ -66,7 +70,7 @@ def new_multi1():
     }
 
 
-def test_multi1(user_data, ans):
+def test_simple(user_data, ans):
     right_answer = user_data['right_answer']
     question = user_data['question']
     if ans != right_answer:
@@ -175,6 +179,107 @@ def test_multi3(user_data, ans):
         return f'{ans}? wrong! {right_answer}'
 
 
+def new_two_actions():
+    """
+        Несколько действий по сложению и умножению
+         a + b * c
+         a - b * c
+         a + b : c
+         a - b : c
+        (a + b) * c
+        (a - b) * c
+        (a + b) : c
+        (a - b) : c
+    """
+
+    quest_type = 'two_actions'
+
+    v = randint(0, 7)
+    if v == 0:
+        b = round(abs(normalvariate(0, 30)))
+        c = round(abs(normalvariate(0, 10)))
+        a = round(abs(normalvariate(0, 300)))
+        return {
+            'quest_type': quest_type,
+            'question': f'{a} + {b} * {c}',
+            'right_answer': str(a + b * c)
+        }
+    elif v == 1:
+        b = 1 + round(abs(normalvariate(0, 30)))
+        c = randint(1, 10)
+        a = b*c + round(abs(normalvariate(0, 300)))
+        return {
+            'quest_type': quest_type,
+            'question': f'{a} - {b} * {c}',
+            'right_answer': str(a - b * c)
+        }
+    elif v == 2:
+        b_c = 1 + round(abs(normalvariate(0, 10)))
+        a = round(abs(normalvariate(0, 30)))
+        c = round(abs(normalvariate(0, 30)))
+        b = b_c * c
+
+        return {
+            'quest_type': quest_type,
+            'question': f'{a} + {b} : {c}',
+            'right_answer': str(a + b_c)
+        }
+    elif v == 3:
+        b_c = 1 + round(abs(normalvariate(0, 10)))
+        a = b_c + round(abs(normalvariate(0, 30)))
+        c = round(abs(normalvariate(0, 10)))
+        b = b_c * c
+
+        return {
+            'quest_type': quest_type,
+            'question': f'{a} - {b} : {c}',
+            'right_answer': str(a - b_c)
+        }
+    if v == 4:
+        a = round(abs(normalvariate(0, 30)))
+        b = round(abs(normalvariate(0, 10)))
+        c = round(abs(normalvariate(0, 30)))
+        return {
+            'quest_type': quest_type,
+            'question': f'({a} + {b}) * {c}',
+            'right_answer': str((a + b) * c)
+        }
+    elif v == 5:
+        b = round(abs(normalvariate(0, 30)))
+        ab = 1 + round(abs(normalvariate(0, 30)))
+        a = b + ab
+        c = round(abs(normalvariate(0, 10)))
+        return {
+            'quest_type': quest_type,
+            'question': f'({a} - {b}) * {c}',
+            'right_answer': str((a - b) * c)
+        }
+    elif v == 6:
+        ab_c = 1+round(abs(normalvariate(0, 10)))
+        c = round(abs(normalvariate(0, 10)))
+        ab = ab_c * c
+        a = randint(1, ab)
+        b = ab - a
+
+        return {
+            'quest_type': quest_type,
+            'question': f'({a} + {b}) : {c}',
+            'right_answer': str(ab_c)
+        }
+    elif v == 7:
+        ab_c = 1 + round(abs(normalvariate(0, 10)))
+        c = round(abs(normalvariate(0, 10)))
+        ab = ab_c * c
+        a = ab + round(abs(normalvariate(0, 30)))
+        b = a - ab
+
+        return {
+            'quest_type': quest_type,
+            'question': f'({a} - {b}) : {c}',
+            'right_answer': str(ab_c)
+        }
+
+
 def test_answer(update, user_data, quest_type, test_func):
     if user_data.get('quest_type', user_data.get('choice')) == quest_type:
         r = test_func(user_data, update.message.text.lower().strip())
@@ -191,7 +296,7 @@ def ask_question(update, user_data, choice_name, new_quest, ret):
 
 
 def multi1(bot, update, user_data):
-    test_answer(update, user_data, 'multi1', test_multi1)
+    test_answer(update, user_data, 'multi1', test_simple)
 
     new_quest = new_multi1()
     return ask_question(update, user_data, 'multi1', new_quest, MULTI1)
@@ -211,9 +316,17 @@ def multi3(bot, update, user_data):
     return ask_question(update, user_data, 'multi3', new_quest, MULTI3)
 
 
+def two_actions(bot, update, user_data):
+    test_answer(update, user_data, 'two_actions', test_simple)
+
+    new_quest = new_two_actions()
+    return ask_question(update, user_data, 'two_actions', new_quest, TWO_ACTIONS)
+
+
 games = {
-        'multi1': (new_multi1, test_multi1),
+        'multi1': (new_multi1, test_simple),
         'multi2': (new_multi2, test_multi2),
+        'two_actions': (new_two_actions, test_simple),
     }
 
 
@@ -325,6 +438,9 @@ def main():
                        RegexHandler('^(multi3)$',
                                     multi3,
                                     pass_user_data=True),
+                       RegexHandler('^(two_actions)$',
+                                    two_actions,
+                                    pass_user_data=True),
                        RegexHandler('^(random)$',
                                     random,
                                     pass_user_data=True),
@@ -348,6 +464,11 @@ def main():
             MULTI3: [RegexHandler('([0-9]|[ ])+',
                                     multi3,
                                     pass_user_data=True),
+                     ],
+
+            TWO_ACTIONS: [RegexHandler('([0-9]|[ ])+',
+                                  two_actions,
+                                  pass_user_data=True),
                      ],
 
             RANDOM: [RegexHandler('([0-9]|[ ])+',
