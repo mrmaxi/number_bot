@@ -23,10 +23,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
-CHOOSING, GUESS_NUMBER, MULTI1, MULTI2, MULTI3 = range(5)
+CHOOSING, GUESS_NUMBER, MULTI1, MULTI2, MULTI3, RANDOM = range(6)
 
 reply_keyboard = [['guess number', 'multi1'],
-                  ['multi2', 'multi3']]
+                  ['multi2', 'random']]
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
 
@@ -211,6 +211,25 @@ def multi3(bot, update, user_data):
     return ask_question(update, user_data, 'multi3', new_quest, MULTI3)
 
 
+games = {
+        'multi1': (new_multi1, test_multi1),
+        'multi2': (new_multi2, test_multi2),
+    }
+
+
+def random(bot, update, user_data):
+    """произвольный пример из multi"""
+
+    quest_type = user_data.get('quest_type', user_data.get('choice'))
+    if quest_type in games:
+        game = games[quest_type]
+        test_answer(update, user_data, quest_type, game[1])
+
+    quest_type = list(games.keys())[randint(0, len(games)-1)]
+    new_quest = games[quest_type][0]()
+    return ask_question(update, user_data, quest_type, new_quest, RANDOM)
+
+
 def calc_nums(num1, num2):
     a = b = 0
     for n, x in enumerate(num1):
@@ -306,6 +325,9 @@ def main():
                        RegexHandler('^(multi3)$',
                                     multi3,
                                     pass_user_data=True),
+                       RegexHandler('^(random)$',
+                                    random,
+                                    pass_user_data=True),
                        ],
 
             GUESS_NUMBER: [RegexHandler('[0-9]{4}',
@@ -326,6 +348,11 @@ def main():
             MULTI3: [RegexHandler('([0-9]|[ ])+',
                                     multi3,
                                     pass_user_data=True),
+                     ],
+
+            RANDOM: [RegexHandler('([0-9]|[ ])+',
+                                  random,
+                                  pass_user_data=True),
                      ],
         },
 
