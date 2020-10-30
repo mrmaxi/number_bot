@@ -413,7 +413,7 @@ def main():
     redis_url = environ.get('REDIS_URL') or 'redis://redis'
     kwargs = {}
 
-    updater = Updater(token, request_kwargs=kwargs)
+    updater = Updater(token, request_kwargs=kwargs, use_context=False)
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher

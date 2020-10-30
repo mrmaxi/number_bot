@@ -4,6 +4,13 @@ import logging
 
 
 class RedisDict(dict):
+    """
+        Dictionary, that store in Redis as one solid json by his own key
+        for save dict in redis it's need to call .save() method
+        when __init__ called read object from redis occurred by default
+            Redis object will be overridden if 'source' argument passed
+    """
+
     redis = None
     id = None
 
@@ -22,10 +29,16 @@ class RedisDict(dict):
         self.update(json.loads(self.redis.get(self.id) or '{}'))
 
     def save(self):
-        self.redis.set(self.id, json.dumps(self))
+        obj = {k: v for k, v in self.items() if not callable(v)}
+        self.redis.set(self.id, json.dumps(obj))
 
 
 class RedisDictStore(dict):
+    """
+        Dictionary that store many dicts, every by his own key in Redis
+        Every dict is RedisDict - dict that store as solid json
+        It's used 'lazy read' from Redis, only when key is requested
+    """
 
     redis = None
     id = None
@@ -50,8 +63,16 @@ class RedisDictStore(dict):
             value = RedisDict(self.redis, id, value)
         super(RedisDictStore, self).__setitem__(key, value)
 
+    def __iter__(self):
+        return iter([key[len(self.id)+1:] for key in self.redis.keys(self.id + ':*')])
+
 
 class RedisSimpleStore(dict):
+    """
+        Dictionary that store many values
+        Every value is stored as json by his own key in Redis
+        When init - it's immediate read every keys from Redis occurred
+    """
 
     redis = None
     id = None
@@ -80,11 +101,12 @@ class RedisSimpleStore(dict):
 
     def __setitem__(self, key, value):
         id = self.key2id(key)
-        try:
-            encoded_value = json.dumps(value)
-        except TypeError:
-            None
-        else:
-            self.redis.set(id, encoded_value)
+        if not callable(value):
+            try:
+                encoded_value = json.dumps(value)
+            except TypeError:
+                None
+            else:
+                self.redis.set(id, encoded_value)
 
         super(RedisSimpleStore, self).__setitem__(key, value)
