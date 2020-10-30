@@ -32,7 +32,7 @@ reply_keyboard = [
 ]
 
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
-
+in_game_markup = ReplyKeyboardMarkup([['Done']], resize_keyboard=True)
 
 def start(bot, update, user_data):
     user_data.clear()
@@ -47,8 +47,7 @@ def start(bot, update, user_data):
 
 
 def new_multi1():
-    """
-        Таблица умножения.
+    """ Примеры на таблицу умножения.
         - Умножение одного числа на другое
         - Деление чисел из таблицы на один из множителей
     """
@@ -90,8 +89,7 @@ for q, r in multiple_table.items():
 
 
 def new_multi2():
-    """
-        Обратная таблица умножения
+    """ Примеры на таблицу умножения в обратную сторону
         Необходимо угадать что на что надо умножить, чтобы получилось заданное число из таблицы умножения
         возможны несколько вариантов ответа, необходимо назвать их все
     """
@@ -180,8 +178,7 @@ def test_multi3(user_data, ans):
 
 
 def new_two_actions():
-    """
-        Несколько действий по сложению и умножению
+    """ Примеры в два действия по сложению и умножению
          a + b * c
          a - b * c
          a + b : c
@@ -280,44 +277,46 @@ def new_two_actions():
         }
 
 
-def test_answer(update, user_data, quest_type, test_func):
+def test_answer(update, user_data, quest_type, test_func, rules=None):
     if user_data.get('quest_type', user_data.get('choice')) == quest_type:
         r = test_func(user_data, update.message.text.lower().strip())
         if r:
             update.message.reply_text(r)
+    elif rules:
+        update.message.reply_text(rules)
 
 
 def ask_question(update, user_data, choice_name, new_quest, ret):
     user_data['choice'] = choice_name
     user_data.update(new_quest)
     user_data.save()
-    update.message.reply_text(new_quest['question'])
+    update.message.reply_text(new_quest['question'])#, reply_markup=in_game_markup)
     return ret
 
 
 def multi1(bot, update, user_data):
-    test_answer(update, user_data, 'multi1', test_simple)
+    test_answer(update, user_data, 'multi1', test_simple, new_multi1.__doc__)
 
     new_quest = new_multi1()
     return ask_question(update, user_data, 'multi1', new_quest, MULTI1)
 
 
 def multi2(bot, update, user_data):
-    test_answer(update, user_data, 'multi2', test_multi2)
+    test_answer(update, user_data, 'multi2', test_multi2, new_multi2.__doc__)
 
     new_quest = new_multi2()
     return ask_question(update, user_data, 'multi2', new_quest, MULTI2)
 
 
 def multi3(bot, update, user_data):
-    test_answer(update, user_data, 'multi3', test_multi3)
+    test_answer(update, user_data, 'multi3', test_multi3, new_multi3.__doc__)
 
     new_quest = new_multi3()
     return ask_question(update, user_data, 'multi3', new_quest, MULTI3)
 
 
 def two_actions(bot, update, user_data):
-    test_answer(update, user_data, 'two_actions', test_simple)
+    test_answer(update, user_data, 'two_actions', test_simple, new_multi3.__doc__)
 
     new_quest = new_two_actions()
     return ask_question(update, user_data, 'two_actions', new_quest, TWO_ACTIONS)
@@ -337,6 +336,8 @@ def random(bot, update, user_data):
     if quest_type in games:
         game = games[quest_type]
         test_answer(update, user_data, quest_type, game[1])
+    else:
+        update.message.reply_text('Различные примеры на умножение и деление из multi1, multi2, two_actions')
 
     quest_type = list(games.keys())[randint(0, len(games)-1)]
     new_quest = games[quest_type][0]()
@@ -365,12 +366,13 @@ def guess_number(bot, update, user_data):
             return guess_number(bot, update, user_data)
 
         if len(set(ans)) != len(ans):
-            update.message.reply_text('В моем числе нет повторяющихся цифр, попробуй снова')
+            update.message.reply_text('В моем числе нет повторяющихся цифр, попробуй снова')#, reply_markup=in_game_markup)
             return GUESS_NUMBER
 
         a, b = calc_nums(ans, right_answer)
-        update.message.reply_text(f'{a}:{b}')
+        update.message.reply_text(f'{a}:{b}')#, reply_markup=in_game_markup)
         return GUESS_NUMBER
+
 
     right_answer = ''
     while len(right_answer) < 4:
@@ -383,13 +385,13 @@ def guess_number(bot, update, user_data):
         'right_answer': right_answer})
     user_data.save()
 
-    update.message.reply_text("Давай начнем,\nУгадай число что я загадал,\nнапиши число из 4 неповторяющихся цифр, а я подскажу сколько цифр ты угадал, и сколько из них расположил на своем месте.")
+    update.message.reply_text("Давай начнем,\nУгадай число что я загадал,\nнапиши число из 4 неповторяющихся цифр, а я подскажу сколько цифр ты угадал, и сколько из них расположил на своем месте.")#, reply_markup=in_game_markup)
     return GUESS_NUMBER
 
 
 def done(bot, update, user_data):
     choiсe = user_data.get('choice')
-    if choiсe in ['multi1', 'multi2', 'multi3']:
+    if choiсe in ['multi1', 'multi2', 'multi3', 'two_actions', 'random']:
         question = user_data['question']
         right_answer = user_data['right_answer']
         update.message.reply_text(f"so, {question}, right answer was {right_answer}\nIt was very nice to play with you")
