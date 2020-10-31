@@ -8,9 +8,10 @@ from os import environ
 from random import randint, normalvariate
 from itertools import chain, permutations
 
-from telegram import ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters, RegexHandler,
                           ConversationHandler)
+from telegram.ext.callbackcontext import CallbackContext
 
 from redis_util import RedisDictStore, RedisSimpleStore
 
@@ -34,7 +35,9 @@ reply_keyboard = [
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 in_game_markup = ReplyKeyboardMarkup([['Done']], resize_keyboard=True)
 
-def start(bot, update, user_data):
+
+def start(update: Update, context: CallbackContext):
+    user_data = context.user_data
     user_data.clear()
     user_data.save()
 
@@ -294,28 +297,32 @@ def ask_question(update, user_data, choice_name, new_quest, ret):
     return ret
 
 
-def multi1(bot, update, user_data):
+def multi1(update: Update, context: CallbackContext):
+    user_data = context.user_data
     test_answer(update, user_data, 'multi1', test_simple, new_multi1.__doc__)
 
     new_quest = new_multi1()
     return ask_question(update, user_data, 'multi1', new_quest, MULTI1)
 
 
-def multi2(bot, update, user_data):
+def multi2(update: Update, context: CallbackContext):
+    user_data = context.user_data
     test_answer(update, user_data, 'multi2', test_multi2, new_multi2.__doc__)
 
     new_quest = new_multi2()
     return ask_question(update, user_data, 'multi2', new_quest, MULTI2)
 
 
-def multi3(bot, update, user_data):
+def multi3(update: Update, context: CallbackContext):
+    user_data = context.user_data
     test_answer(update, user_data, 'multi3', test_multi3, new_multi3.__doc__)
 
     new_quest = new_multi3()
     return ask_question(update, user_data, 'multi3', new_quest, MULTI3)
 
 
-def two_actions(bot, update, user_data):
+def two_actions(update: Update, context: CallbackContext):
+    user_data = context.user_data
     test_answer(update, user_data, 'two_actions', test_simple, new_multi3.__doc__)
 
     new_quest = new_two_actions()
@@ -329,8 +336,9 @@ games = {
     }
 
 
-def random(bot, update, user_data):
+def random(update: Update, context: CallbackContext):
     """произвольный пример из multi"""
+    user_data = context.user_data
 
     quest_type = user_data.get('quest_type', user_data.get('choice'))
     if quest_type in games:
@@ -354,7 +362,8 @@ def calc_nums(num1, num2):
     return (a, b)
 
 
-def guess_number(bot, update, user_data):
+def guess_number(update: Update, context: CallbackContext):
+    user_data = context.user_data
     if user_data.get('choice') == 'guess_number':
         ans = update.message.text.lower().strip()
         right_answer = user_data['right_answer']
@@ -363,7 +372,7 @@ def guess_number(bot, update, user_data):
             user_data.clear()
             user_data.save()
             update.message.reply_text(f'Молодец, угадал!\nя загадал {right_answer}')
-            return guess_number(bot, update, user_data)
+            return guess_number(update, context)
 
         if len(set(ans)) != len(ans):
             update.message.reply_text('В моем числе нет повторяющихся цифр, попробуй снова')#, reply_markup=in_game_markup)
@@ -372,7 +381,6 @@ def guess_number(bot, update, user_data):
         a, b = calc_nums(ans, right_answer)
         update.message.reply_text(f'{a}:{b}')#, reply_markup=in_game_markup)
         return GUESS_NUMBER
-
 
     right_answer = ''
     while len(right_answer) < 4:
@@ -389,24 +397,25 @@ def guess_number(bot, update, user_data):
     return GUESS_NUMBER
 
 
-def done(bot, update, user_data):
-    choiсe = user_data.get('choice')
-    if choiсe in ['multi1', 'multi2', 'multi3', 'two_actions', 'random']:
+def done(update: Update, context: CallbackContext):
+    user_data = context.user_data
+    choise = user_data.get('choice')
+    if choise in ['multi1', 'multi2', 'multi3', 'two_actions', 'random']:
         question = user_data['question']
         right_answer = user_data['right_answer']
         update.message.reply_text(f"so, {question}, right answer was {right_answer}\nIt was very nice to play with you")
-    elif choiсe == 'guess_number':
+    elif choise == 'guess_number':
         right_answer = user_data['right_answer']
         update.message.reply_text(f"Сдаешься? Я загадал {right_answer}, жаль что не доиграли!")
     else:
         update.message.reply_text("Bye bye!")
 
-    return start(bot, update, user_data)
+    return start(update, context)
 
 
-def error(bot, update, error):
+def error(update: Update, context: CallbackContext):
     """Log Errors caused by Updates."""
-    logger.warning('Update "%s" caused error "%s"', update, error)
+    logger.warning('Update "%s" caused error "%s"', update, context.error)
 
 
 def main():
@@ -415,7 +424,7 @@ def main():
     redis_url = environ.get('REDIS_URL') or 'redis://redis'
     kwargs = {}
 
-    updater = Updater(token, request_kwargs=kwargs, use_context=False)
+    updater = Updater(token, request_kwargs=kwargs)
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
@@ -425,61 +434,31 @@ def main():
     # Add conversation handler with the states GENDER, PHOTO, LOCATION and BIO
     conv_handler = ConversationHandler(
         allow_reentry=True,
-        entry_points=[CommandHandler('start', start, pass_user_data=True)],
+        entry_points=[CommandHandler('start', start)],
 
         states={
-            CHOOSING: [RegexHandler('^(guess number)$',
-                                    guess_number,
-                                    pass_user_data=True),
-                       RegexHandler('^(multi1)$',
-                                    multi1,
-                                    pass_user_data=True),
-                       RegexHandler('^(multi2)$',
-                                    multi2,
-                                    pass_user_data=True),
-                       RegexHandler('^(multi3)$',
-                                    multi3,
-                                    pass_user_data=True),
-                       RegexHandler('^(two_actions)$',
-                                    two_actions,
-                                    pass_user_data=True),
-                       RegexHandler('^(random)$',
-                                    random,
-                                    pass_user_data=True),
+            CHOOSING: [MessageHandler(Filters.regex('^(guess number)$'), guess_number),
+                       MessageHandler(Filters.regex('^(multi1)$'), multi1),
+                       MessageHandler(Filters.regex('^(multi2)$'), multi2),
+                       MessageHandler(Filters.regex('^(multi3)$'), multi3),
+                       MessageHandler(Filters.regex('^(two_actions)$'), two_actions),
+                       MessageHandler(Filters.regex('^(random)$'), random),
                        ],
 
-            GUESS_NUMBER: [RegexHandler('[0-9]{4}',
-                                    guess_number,
-                                    pass_user_data=True),
-                    ],
+            GUESS_NUMBER: [MessageHandler(Filters.regex('[0-9]{4}'), guess_number), ],
 
-            MULTI1: [RegexHandler('([0-9]|[ ])+',
-                                    multi1,
-                                    pass_user_data=True),
-                    ],
+            MULTI1: [MessageHandler(Filters.regex('([0-9]|[ ])+'), multi1), ],
 
-            MULTI2: [RegexHandler('([0-9]|[ ])+',
-                                    multi2,
-                                    pass_user_data=True),
-                     ],
+            MULTI2: [MessageHandler(Filters.regex('([0-9]|[ ])+'), multi2), ],
 
-            MULTI3: [RegexHandler('([0-9]|[ ])+',
-                                    multi3,
-                                    pass_user_data=True),
-                     ],
+            MULTI3: [MessageHandler(Filters.regex('([0-9]|[ ])+'), multi3), ],
 
-            TWO_ACTIONS: [RegexHandler('([0-9]|[ ])+',
-                                  two_actions,
-                                  pass_user_data=True),
-                     ],
+            TWO_ACTIONS: [MessageHandler(Filters.regex('([0-9]|[ ])+'), two_actions), ],
 
-            RANDOM: [RegexHandler('([0-9]|[ ])+',
-                                  random,
-                                  pass_user_data=True),
-                     ],
+            RANDOM: [MessageHandler(Filters.regex('([0-9]|[ ])+'), random), ],
         },
 
-        fallbacks=[RegexHandler('^Done$', done, pass_user_data=True)]
+        fallbacks=[MessageHandler(Filters.regex('^Done$'), done)]
     )
     conv_handler.conversations = RedisSimpleStore(id='main_conversations', redis_url=redis_url)
     dp.add_handler(conv_handler)
