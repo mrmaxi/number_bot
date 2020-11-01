@@ -5,6 +5,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def prepare_value_for_json(value):
+    if value is None:
+        return value
+    elif isinstance(value, (int, float, bool, str)):
+        return value
+    else:
+        return str(value)
+
+
+def prepare_obj_for_json(obj):
+    if isinstance(obj, dict):
+        return {prepare_value_for_json(key): prepare_obj_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [prepare_obj_for_json(value) for value in obj]
+    else:
+        return prepare_value_for_json(obj)
+
+
 class RedisDict(dict):
     """
         Dictionary, that store in Redis as one solid json by his own key
@@ -16,23 +34,20 @@ class RedisDict(dict):
     _redis = None
     id = None
 
-    def __init__(self, redis, id, source=None):
-        super().__init__()
+    def __init__(self, redis, id, seq=None, **kwargs):
         self._redis = redis
         self.id = id
-        if source:
-            print(source)
-            self.update(source)
-            self.save()
-        else:
+        args = [] if seq is None else [seq]
+        super().__init__(*args, **kwargs)
+        if not self:
             self.read()
 
     def read(self):
         self.clear()
         self.update(json.loads(self._redis.get(self.id) or '{}'))
 
-    def save(self):
-        obj = {k: v for k, v in self.items() if not callable(v)}
+    def flush(self):
+        obj = prepare_obj_for_json(self)
         self._redis.set(self.id, json.dumps(obj))
 
 
@@ -46,28 +61,45 @@ class RedisDictStore(dict):
     _redis = None
     id = None
 
-    def __init__(self, redis_url, id):
-        super().__init__()
-        self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
+    def key2id(self, key):
+        return f"{self.id}:{key}"
+
+    def id2key(self, id):
+        return id[len(self.id) + 1:]
+
+    def __read_from_redis__(self, key):
+        return RedisDict(self._redis, self.key2id(key))
+
+    def __read_keys_from_redis__(self):
+        return [self.id2key(id) for id in self._redis.keys(f'{self.id}:*')]
+
+    def __init__(self, redis_url, id, lazy_read=True):
         self.id = id
+        self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
+        args = []
+        if not lazy_read:
+            args = [(key, self.__read_from_redis__(key)) for key in self.__read_keys_from_redis__()]
+        super().__init__(*args)
 
     def __missing__(self, key):
-        id = self.id + ':' + str(key)
+        key = str(key)
         logger.debug(f'check {key} in redis')
-        value = RedisDict(self._redis, id)
+        value = self.__read_from_redis__(key)
         if value:
             logger.debug(f'read {key} from redis = {value}')
-            super().__setitem__(key, value)
+        super().__setitem__(key, value)
         return value
 
     def __setitem__(self, key, value):
+        key = str(key)
         if not isinstance(value, RedisDict):
-            id = self.id+':'+str(key)
-            value = RedisDict(self._redis, id, value)
+            assert isinstance(value, dict), f'item value of RedisDictStore must be a dict, not {type(value)}'
+            value = RedisDict(self._redis, self.key2id(key), value.items())
+            value.flush()
         super().__setitem__(key, value)
 
     def __iter__(self):
-        return iter([key[len(self.id)+1:] for key in self._redis.keys(self.id + ':*')])
+        return iter(self.keys() | self.__read_keys_from_redis__())
 
 
 class RedisSimpleStore(dict):
@@ -90,12 +122,11 @@ class RedisSimpleStore(dict):
         return key
 
     def __init__(self, redis_url, id):
-        super().__init__()
-        self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
         self.id = id
+        self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
         ids = self._redis.keys(self.id + ':*')
         keys = [self.id2key(key_id) for key_id in ids]
-        super().update(zip(keys, map(json.loads, map(self._redis.get, ids))))
+        super().__init__(zip(keys, map(json.loads, map(self._redis.get, ids))))
 
     def __delitem__(self, key):
         id = self.key2id(key)
@@ -108,7 +139,7 @@ class RedisSimpleStore(dict):
             try:
                 encoded_value = json.dumps(value)
             except TypeError:
-                None
+                pass
             else:
                 self._redis.set(id, encoded_value)
 
