@@ -2,6 +2,8 @@ import json
 from redis import StrictRedis
 import logging
 
+logger = logging.getLogger(__name__)
+
 
 class RedisDict(dict):
     """
@@ -42,7 +44,6 @@ class RedisDictStore(dict):
 
     redis = None
     id = None
-    logger = logging.getLogger(__name__)
 
     def __init__(self, redis_url, id):
         self.redis = StrictRedis.from_url(redis_url, decode_responses=True)
@@ -50,10 +51,10 @@ class RedisDictStore(dict):
 
     def __missing__(self, key):
         id = self.id + ':' + str(key)
-        self.logger.debug(f'check {key} in redis')
+        logger.debug(f'check {key} in redis')
         value = RedisDict(self.redis, id)
         if value:
-            self.logger.debug(f'read {key} from redis = {value}')
+            logger.debug(f'read {key} from redis = {value}')
             super(RedisDictStore, self).__setitem__(key, value)
         return value
 
@@ -76,7 +77,6 @@ class RedisSimpleStore(dict):
 
     redis = None
     id = None
-    logger = logging.getLogger(__name__)
 
     def key2id(self, key):
         return f"{self.id}:{json.dumps(key)}"
