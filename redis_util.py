@@ -1,5 +1,6 @@
 import json
 from redis import StrictRedis
+from collections import defaultdict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class RedisDict(dict):
         self._redis.set(self.id, json.dumps(obj))
 
 
-class RedisDictStore(dict):
+class RedisDictStore(defaultdict):
     """
         Dictionary that store many dicts, every by his own key in Redis
         Every dict is RedisDict - dict that store as solid json
@@ -70,16 +71,21 @@ class RedisDictStore(dict):
     def __read_from_redis__(self, key):
         return RedisDict(self._redis, self.key2id(key))
 
+    def __save_to_redis__(self, key, value: dict):
+        value = RedisDict(self._redis, self.key2id(key), value.items())
+        value.flush()
+        return value
+
     def __read_keys_from_redis__(self):
         return [self.id2key(id) for id in self._redis.keys(f'{self.id}:*')]
 
-    def __init__(self, redis_url, id, lazy_read=True):
+    def __init__(self, redis_url, id, default_factory=None, lazy_read=True):
         self.id = id
         self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
         args = []
         if not lazy_read:
             args = [(key, self.__read_from_redis__(key)) for key in self.__read_keys_from_redis__()]
-        super().__init__(*args)
+        super().__init__(default_factory, *args)
 
     def __missing__(self, key):
         key = str(key)
@@ -87,15 +93,16 @@ class RedisDictStore(dict):
         value = self.__read_from_redis__(key)
         if value:
             logger.debug(f'read {key} from redis = {value}')
+        elif self.default_factory:
+            value = self.__save_to_redis__(key, self.default_factory())
         super().__setitem__(key, value)
         return value
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value: dict):
         key = str(key)
         if not isinstance(value, RedisDict):
             assert isinstance(value, dict), f'item value of RedisDictStore must be a dict, not {type(value)}'
-            value = RedisDict(self._redis, self.key2id(key), value.items())
-            value.flush()
+            value = self.__save_to_redis__(key, value)
         super().__setitem__(key, value)
 
     def __iter__(self):
