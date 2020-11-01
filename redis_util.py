@@ -13,11 +13,12 @@ class RedisDict(dict):
             Redis object will be overridden if 'source' argument passed
     """
 
-    redis = None
+    _redis = None
     id = None
 
     def __init__(self, redis, id, source=None):
-        self.redis = redis
+        super().__init__()
+        self._redis = redis
         self.id = id
         if source:
             print(source)
@@ -28,11 +29,11 @@ class RedisDict(dict):
 
     def read(self):
         self.clear()
-        self.update(json.loads(self.redis.get(self.id) or '{}'))
+        self.update(json.loads(self._redis.get(self.id) or '{}'))
 
     def save(self):
         obj = {k: v for k, v in self.items() if not callable(v)}
-        self.redis.set(self.id, json.dumps(obj))
+        self._redis.set(self.id, json.dumps(obj))
 
 
 class RedisDictStore(dict):
@@ -42,30 +43,31 @@ class RedisDictStore(dict):
         It's used 'lazy read' from Redis, only when key is requested
     """
 
-    redis = None
+    _redis = None
     id = None
 
     def __init__(self, redis_url, id):
-        self.redis = StrictRedis.from_url(redis_url, decode_responses=True)
+        super().__init__()
+        self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
         self.id = id
 
     def __missing__(self, key):
         id = self.id + ':' + str(key)
         logger.debug(f'check {key} in redis')
-        value = RedisDict(self.redis, id)
+        value = RedisDict(self._redis, id)
         if value:
             logger.debug(f'read {key} from redis = {value}')
-            super(RedisDictStore, self).__setitem__(key, value)
+            super().__setitem__(key, value)
         return value
 
     def __setitem__(self, key, value):
         if not isinstance(value, RedisDict):
             id = self.id+':'+str(key)
-            value = RedisDict(self.redis, id, value)
-        super(RedisDictStore, self).__setitem__(key, value)
+            value = RedisDict(self._redis, id, value)
+        super().__setitem__(key, value)
 
     def __iter__(self):
-        return iter([key[len(self.id)+1:] for key in self.redis.keys(self.id + ':*')])
+        return iter([key[len(self.id)+1:] for key in self._redis.keys(self.id + ':*')])
 
 
 class RedisSimpleStore(dict):
@@ -75,7 +77,7 @@ class RedisSimpleStore(dict):
         When init - it's immediate read every keys from Redis occurred
     """
 
-    redis = None
+    _redis = None
     id = None
 
     def key2id(self, key):
@@ -88,16 +90,17 @@ class RedisSimpleStore(dict):
         return key
 
     def __init__(self, redis_url, id):
-        self.redis = StrictRedis.from_url(redis_url, decode_responses=True)
+        super().__init__()
+        self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
         self.id = id
-        ids = self.redis.keys(self.id+':*')
+        ids = self._redis.keys(self.id + ':*')
         keys = [self.id2key(key_id) for key_id in ids]
-        super(RedisSimpleStore, self).update(zip(keys, map(json.loads, map(self.redis.get, ids))))
+        super().update(zip(keys, map(json.loads, map(self._redis.get, ids))))
 
     def __delitem__(self, key):
         id = self.key2id(key)
-        self.redis.delete(id)
-        super(RedisSimpleStore, self).__delitem__(key)
+        self._redis.delete(id)
+        super().__delitem__(key)
 
     def __setitem__(self, key, value):
         id = self.key2id(key)
@@ -107,6 +110,6 @@ class RedisSimpleStore(dict):
             except TypeError:
                 None
             else:
-                self.redis.set(id, encoded_value)
+                self._redis.set(id, encoded_value)
 
-        super(RedisSimpleStore, self).__setitem__(key, value)
+        super().__setitem__(key, value)
