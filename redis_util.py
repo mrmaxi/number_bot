@@ -24,6 +24,10 @@ def prepare_obj_for_json(obj):
         return prepare_value_for_json(obj)
 
 
+def redis_from_url_or_object(redis_url):
+    return redis_url if isinstance(redis_url, StrictRedis) else StrictRedis.from_url(redis_url, decode_responses=True)
+
+
 class RedisDict(dict):
     """
         Dictionary, that store in Redis as one solid json by his own key
@@ -35,8 +39,8 @@ class RedisDict(dict):
     _redis = None
     id = None
 
-    def __init__(self, redis, id, seq=None, **kwargs):
-        self._redis = redis
+    def __init__(self, redis_url, id, seq=None, **kwargs):
+        self._redis = redis_from_url_or_object(redis_url)
         self.id = id
         args = [] if seq is None else [seq]
         super().__init__(*args, **kwargs)
@@ -106,7 +110,8 @@ class BaseRedisStore(defaultdict):
 
     def __init__(self, redis_url, id, default_factory=None, lazy_read=True):
         self.id = id
-        self._redis = StrictRedis.from_url(redis_url, decode_responses=True)
+        self._redis = redis_from_url_or_object(redis_url)
+
         args = []
         if not lazy_read:
             args = [(key, self.__read_from_redis__(key)) for key in self.__read_keys_from_redis__()]
