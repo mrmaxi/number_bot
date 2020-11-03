@@ -108,6 +108,9 @@ class BaseRedisStore(defaultdict):
     def flush(self):
         pass
 
+    def free(self, key):
+        super().__delitem__(key)
+
     def __init__(self, redis_url, id, default_factory=None, lazy_read=True):
         self.id = id
         self._redis = redis_from_url_or_object(redis_url)
