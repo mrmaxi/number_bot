@@ -41,9 +41,6 @@ class RedisDict(dict):
             Redis object will be overridden if 'source' argument passed
     """
 
-    _redis = None
-    id = None
-
     def __init__(self, redis_url, id, seq=None, **kwargs):
         self._redis = redis_from_url_or_object(redis_url)
         self.id = id
@@ -71,17 +68,11 @@ class BaseRedisStore(defaultdict):
         it's need to override __read_from_redis__, __save_to_redis__
     """
 
-    _redis = None
-    id = None
-
     def key2id(self, key):
         return f"{self.id}:{key}"
 
     def id2key(self, id):
         return id[len(self.id) + 1:]
-
-    def default_factory_from_key(self, key):
-        return None
 
     @staticmethod
     def serialize(key, value) -> str:
@@ -94,6 +85,7 @@ class BaseRedisStore(defaultdict):
     def __read_from_redis__(self, key):
         serialized_value = self._redis.get(self.key2id(key))
         value = self.deserialize(key, serialized_value)
+        logger.debug(f'read {key} from redis = {value}')
         return value
 
     def __save_to_redis__(self, key, value):
@@ -105,10 +97,25 @@ class BaseRedisStore(defaultdict):
         self._redis.delete(self.key2id(key))
 
     def __exists_in_redis__(self, key):
+        logger.debug(f'check {key} in redis')
         return self._redis.exists(self.key2id(key))
 
     def __read_keys_from_redis__(self):
         return [self.id2key(id) for id in self._redis.keys(f'{self.id}:*')]
+
+    def __read_throw_redis__(self, key):
+        key = str(key)
+        if self.__exists_in_redis__(key):
+            value = self.__read_from_redis__(key)
+            super().__setitem__(key, value)
+            return True
+        return False
+
+    def __save_throw_redis__(self, key, value):
+        key = str(key)
+        value = self.__save_to_redis__(key, value)
+        super().__setitem__(key, value)
+        return value
 
     def flush(self):
         pass
@@ -128,22 +135,30 @@ class BaseRedisStore(defaultdict):
             args = [seq]
         super().__init__(default_factory, *args)
 
+    def get(self, key, default=None):
+        key = str(key)
+        if key in self or self.__read_throw_redis__(key):
+            return self[key]
+
+        return default
+
+    def setdefault(self, key, default=None):
+        key = str(key)
+        if key in self or self.__read_throw_redis__(key):
+            return self[key]
+
+        return self.__save_throw_redis__(key, default)
+
     def __missing__(self, key):
         key = str(key)
-        logger.debug(f'check {key} in redis')
-        if self.__exists_in_redis__(key):
-            value = self.__read_from_redis__(key)
-            logger.debug(f'read {key} from redis = {value}')
-        else:
-            value = self.default_factory_from_key(key)
-            value = self.__save_to_redis__(key, value)
-        super().__setitem__(key, value)
-        return value
+        if self.__read_throw_redis__(key):
+            return self[key]
 
-    def __setitem__(self, key, value: dict):
-        key = str(key)
-        value = self.__save_to_redis__(key, value)
-        super().__setitem__(key, value)
+        self.__setitem__(key, self.default_factory())
+        return self[key]
+
+    def __setitem__(self, key, value):
+        self.__save_throw_redis__(key, value)
 
     def __delitem__(self, key):
         self.__remove_from_redis__(key)
@@ -163,8 +178,8 @@ class RedisDictStore(BaseRedisStore):
         It's used 'lazy read' from Redis, only when key is requested
     """
 
-    def default_factory_from_key(self, key):
-        return dict()
+    def __init__(self, redis_url, id, default_factory=lambda: dict(), lazy_read=True, seq=None):
+        super().__init__(redis_url, id, default_factory=default_factory, lazy_read=lazy_read, seq=seq)
 
     def __read_from_redis__(self, key):
         return RedisDict(self._redis, self.key2id(key))
@@ -197,3 +212,6 @@ class RedisSimpleStore(BaseRedisStore):
         if isinstance(key, list):
             key = tuple(key)
         return key
+
+    def __init__(self, redis_url, id, default_factory=lambda: 0, lazy_read=True, seq=None):
+        super().__init__(redis_url, id, default_factory=default_factory, lazy_read=lazy_read, seq=seq)
