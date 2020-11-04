@@ -9,11 +9,10 @@ from random import randint, normalvariate
 from itertools import chain, permutations
 
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters, RegexHandler,
-                          ConversationHandler)
+from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters, ConversationHandler)
 from telegram.ext.callbackcontext import CallbackContext
 
-from redis_util import RedisDictStore, RedisSimpleStore
+from redispersistence import RedisPersistence
 
 import logging
 
@@ -422,17 +421,17 @@ def main():
     # Create the Updater and pass it your bot's token.
     token = environ.get('TOKEN')
     redis_url = environ.get('REDIS_URL') or 'redis://redis'
-    kwargs = {}
+    persistence = RedisPersistence(redis_url, store_chat_data=False, store_bot_data=False)
 
-    updater = Updater(token, request_kwargs=kwargs)
+    updater = Updater(token, persistence=persistence)
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
 
-    dp.user_data = RedisDictStore(id='user_data', redis_url=redis_url)
-
     # Add conversation handler with the states GENDER, PHOTO, LOCATION and BIO
     conv_handler = ConversationHandler(
+        name='main',
+        persistent=True,
         allow_reentry=True,
         entry_points=[CommandHandler('start', start)],
 
@@ -460,7 +459,7 @@ def main():
 
         fallbacks=[MessageHandler(Filters.regex('^Done$'), done)]
     )
-    conv_handler.conversations = RedisSimpleStore(id='main_conversations', redis_url=redis_url)
+
     dp.add_handler(conv_handler)
 
     # log all errors
