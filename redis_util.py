@@ -25,7 +25,12 @@ def prepare_obj_for_json(obj):
 
 
 def redis_from_url_or_object(redis_url):
-    return redis_url if isinstance(redis_url, StrictRedis) else StrictRedis.from_url(redis_url, decode_responses=True)
+    if isinstance(redis_url, StrictRedis):
+        return redis_url
+    elif isinstance(redis_url, str):
+        return StrictRedis.from_url(redis_url, decode_responses=True)
+    else:
+        assert False, f'redis_url must be Redis object or url, not {redis_url}'
 
 
 class RedisDict(dict):
@@ -111,13 +116,16 @@ class BaseRedisStore(defaultdict):
     def free(self, key):
         super().__delitem__(key)
 
-    def __init__(self, redis_url, id, default_factory=None, lazy_read=True):
+    def __init__(self, redis_url, id, default_factory=None, lazy_read=True, seq=None):
         self.id = id
         self._redis = redis_from_url_or_object(redis_url)
 
         args = []
-        if not lazy_read:
-            args = [(key, self.__read_from_redis__(key)) for key in self.__read_keys_from_redis__()]
+        if seq is not None:
+            args = [seq]
+        elif not lazy_read:
+            seq = [(key, self.__read_from_redis__(key)) for key in self.__read_keys_from_redis__()]
+            args = [seq]
         super().__init__(default_factory, *args)
 
     def __missing__(self, key):
@@ -143,6 +151,9 @@ class BaseRedisStore(defaultdict):
 
     def __iter__(self):
         return iter(self.keys() | self.__read_keys_from_redis__())
+
+    def __copy__(self):
+        return self.__class__(self._redis, self.id, default_factory=self.default_factory, seq=self.items())
 
 
 class RedisDictStore(BaseRedisStore):
