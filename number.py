@@ -12,7 +12,7 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters, ConversationHandler)
 from telegram.ext.callbackcontext import CallbackContext
 
-from redispersistence import RedisPersistence
+from redispersistence import RedisPersistence, RedisDict
 
 import logging
 
@@ -38,7 +38,8 @@ in_game_markup = ReplyKeyboardMarkup([['Done']], resize_keyboard=True)
 def start(update: Update, context: CallbackContext):
     user_data = context.user_data
     user_data.clear()
-    user_data.flush()
+    if isinstance(user_data, RedisDict):
+        user_data.flush()
 
     update.message.reply_text(
         "Hi! My name is number-bot. I offer you to play several useful games!"
@@ -279,7 +280,7 @@ def new_two_actions():
         }
 
 
-def test_answer(update, user_data, quest_type, test_func, rules=None):
+def test_answer(update: Update, user_data, quest_type, test_func, rules=None):
     if user_data.get('quest_type', user_data.get('choice')) == quest_type:
         r = test_func(user_data, update.message.text.lower().strip())
         if r:
@@ -288,10 +289,11 @@ def test_answer(update, user_data, quest_type, test_func, rules=None):
         update.message.reply_text(rules)
 
 
-def ask_question(update, user_data, choice_name, new_quest, ret):
+def ask_question(update: Update, user_data, choice_name, new_quest, ret):
     user_data['choice'] = choice_name
     user_data.update(new_quest)
-    user_data.flush()
+    if isinstance(user_data, RedisDict):
+        user_data.flush()
     update.message.reply_text(new_quest['question'])#, reply_markup=in_game_markup)
     return ret
 
@@ -369,7 +371,8 @@ def guess_number(update: Update, context: CallbackContext):
 
         if ans == right_answer:
             user_data.clear()
-            user_data.flush()
+            if isinstance(user_data, RedisDict):
+                user_data.flush()
             update.message.reply_text(f'Молодец, угадал!\nя загадал {right_answer}')
             return guess_number(update, context)
 
@@ -390,7 +393,8 @@ def guess_number(update: Update, context: CallbackContext):
     user_data.update({
         'choice': 'guess_number',
         'right_answer': right_answer})
-    user_data.flush()
+    if isinstance(user_data, RedisDict):
+        user_data.flush()
 
     update.message.reply_text("Давай начнем,\nУгадай число что я загадал,\nнапиши число из 4 неповторяющихся цифр, а я подскажу сколько цифр ты угадал, и сколько из них расположил на своем месте.")#, reply_markup=in_game_markup)
     return GUESS_NUMBER
