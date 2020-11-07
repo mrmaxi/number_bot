@@ -7,6 +7,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class ValueNotExists(object):
+    pass
+
+
+value_not_exists = ValueNotExists()
+
+
 def prepare_value_for_json(value):
     """
     convert to str datatypes not suitable for json serialization
@@ -93,6 +100,8 @@ class BaseRedisStore(defaultdict):
 
     def __read_from_redis__(self, key):
         serialized_value = self._redis.get(self.key2id(key))
+        if serialized_value is None:
+            return value_not_exists
         value = self.deserialize(key, serialized_value)
         logger.debug(f'read {key} from redis = {value}')
         return value
@@ -114,11 +123,10 @@ class BaseRedisStore(defaultdict):
 
     def __read_throw_redis__(self, key):
         key = str(key)
-        if self.__exists_in_redis__(key):
-            value = self.__read_from_redis__(key)
+        value = self.__read_from_redis__(key)
+        if value is not value_not_exists:
             super().__setitem__(key, value)
-            return True
-        return False
+        return value
 
     def __save_throw_redis__(self, key, value):
         key = str(key)
@@ -146,25 +154,34 @@ class BaseRedisStore(defaultdict):
 
     def get(self, key, default=None):
         key = str(key)
-        if key in self or self.__read_throw_redis__(key):
+        if key in self:
             return self[key]
+
+        value = self.__read_throw_redis__(key)
+        if value is not value_not_exists:
+            return value
 
         return default
 
     def setdefault(self, key, default=None):
         key = str(key)
-        if key in self or self.__read_throw_redis__(key):
+        if key in self:
             return self[key]
+
+        value = self.__read_throw_redis__(key)
+        if value is not value_not_exists:
+            return value
 
         return self.__save_throw_redis__(key, default)
 
     def __missing__(self, key):
         key = str(key)
-        if self.__read_throw_redis__(key):
-            return self[key]
+        
+        value = self.__read_throw_redis__(key)
+        if value is not value_not_exists:
+            return value
 
-        self.__setitem__(key, self.default_factory())
-        return self[key]
+        return self.__save_throw_redis__(key, self.default_factory())
 
     def __setitem__(self, key, value):
         self.__save_throw_redis__(key, value)
@@ -191,7 +208,10 @@ class RedisDictStore(BaseRedisStore):
         super().__init__(redis_url, key_id, default_factory=default_factory, lazy_read=lazy_read, seq=seq)
 
     def __read_from_redis__(self, key):
-        return RedisDict(self._redis, self.key2id(key))
+        if self.__exists_in_redis__(key):
+            return RedisDict(self._redis, self.key2id(key))
+        else:
+            return value_not_exists
 
     def __save_to_redis__(self, key, value: dict):
         if not isinstance(value, RedisDict):
