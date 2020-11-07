@@ -1,12 +1,17 @@
 import json
 from redis import StrictRedis
 from collections import defaultdict
+from typing import Optional, Union, Iterable
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 def prepare_value_for_json(value):
+    """
+    convert to str datatypes not suitable for json serialization
+    """
+
     if value is None:
         return value
     elif isinstance(value, (int, float, bool, str)):
@@ -16,6 +21,10 @@ def prepare_value_for_json(value):
 
 
 def prepare_obj_for_json(obj):
+    """
+    convert values of complex datatypes (dicts, lists) not suitable for json serialization to str
+    """
+
     if isinstance(obj, dict):
         return {prepare_value_for_json(key): prepare_obj_for_json(value) for key, value in obj.items()}
     elif isinstance(obj, (list, tuple)):
@@ -24,26 +33,29 @@ def prepare_obj_for_json(obj):
         return prepare_value_for_json(obj)
 
 
-def redis_from_url_or_object(redis_url):
+def redis_from_url_or_object(redis_url: Union[str, 'StrictRedis']):
+    """
+    return redis object if url passed
+    """
+
     if isinstance(redis_url, StrictRedis):
         return redis_url
     elif isinstance(redis_url, str):
         return StrictRedis.from_url(redis_url, decode_responses=True)
     else:
-        assert False, f'redis_url must be Redis object or url, not {redis_url}'
+        assert False, f'redis_url must be Redis object or url, not {type(redis_url)}'
 
 
 class RedisDict(dict):
     """
-        Dictionary, that store in Redis as one solid json by his own key
-        for save dict in redis it's need to call .save() method
-        when __init__ called read object from redis occurred by default
-            Redis object will be overridden if 'source' argument passed
+        Dictionary, that store in Redis as one solid json by his own redis key (key_id)
+        for save dict in redis it's need to call :meth:`telegram.ext.redis_util.RedisDict.flush`
+        read object from redis on initialization :meth:`telegram.ext.redis_util.RedisDict.__init__`
     """
 
-    def __init__(self, redis_url, id, seq=None, **kwargs):
+    def __init__(self, redis_url: Union[str, 'StrictRedis'], key_id: str, seq: Optional[Iterable] = None, **kwargs):
         self._redis = redis_from_url_or_object(redis_url)
-        self.id = id
+        self.key_id = key_id
         args = [] if seq is None else [seq]
         super().__init__(*args, **kwargs)
         if not self:
@@ -51,28 +63,25 @@ class RedisDict(dict):
 
     def read(self):
         self.clear()
-        self.update(json.loads(self._redis.get(self.id) or '{}'))
+        self.update(json.loads(self._redis.get(self.key_id) or '{}'))
 
     def flush(self):
         obj = prepare_obj_for_json(self)
-        self._redis.set(self.id, json.dumps(obj))
+        self._redis.set(self.key_id, json.dumps(obj))
 
 
 class BaseRedisStore(defaultdict):
     """
-        Dictionary that store several values of same type, every by his own key in Redis
-        Every value is the same type, for example RedisDict that store as solid json
-        It's used 'lazy read' from Redis, only when key is requested
+        Dictionary that store values in Redis, every by his own key as key_id:key
+        It's using 'lazy read' from Redis, so read key value only when key is requested
         All keys convert to str
-
-        it's need to override __read_from_redis__, __save_to_redis__
     """
 
     def key2id(self, key):
-        return f"{self.id}:{key}"
+        return f"{self.key_id}:{key}"
 
-    def id2key(self, id):
-        return id[len(self.id) + 1:]
+    def id2key(self, key_id):
+        return key_id[len(self.key_id) + 1:]
 
     @staticmethod
     def serialize(key, value) -> str:
@@ -101,7 +110,7 @@ class BaseRedisStore(defaultdict):
         return self._redis.exists(self.key2id(key))
 
     def __read_keys_from_redis__(self):
-        return [self.id2key(id) for id in self._redis.keys(f'{self.id}:*')]
+        return [self.id2key(key_id) for key_id in self._redis.keys(f'{self.key_id}:*')]
 
     def __read_throw_redis__(self, key):
         key = str(key)
@@ -123,8 +132,8 @@ class BaseRedisStore(defaultdict):
     def free(self, key):
         super().__delitem__(key)
 
-    def __init__(self, redis_url, id, default_factory=None, lazy_read=True, seq=None):
-        self.id = id
+    def __init__(self, redis_url: Union[str, 'StrictRedis'], key_id: str, default_factory=None, lazy_read=True, seq=None):
+        self.key_id = key_id
         self._redis = redis_from_url_or_object(redis_url)
 
         args = []
@@ -168,18 +177,18 @@ class BaseRedisStore(defaultdict):
         return iter(self.keys() | self.__read_keys_from_redis__())
 
     def __copy__(self):
-        return self.__class__(self._redis, self.id, default_factory=self.default_factory, seq=self.items())
+        return self.__class__(self._redis, self.key_id, default_factory=self.default_factory, seq=self.items())
 
 
 class RedisDictStore(BaseRedisStore):
     """
         Dictionary that store many dicts, every by his own key in Redis
         Every dict is RedisDict - dict that store as solid json
-        It's used 'lazy read' from Redis, only when key is requested
+        It's using 'lazy read' from BaseRedisStore
     """
 
-    def __init__(self, redis_url, id, default_factory=lambda: dict(), lazy_read=True, seq=None):
-        super().__init__(redis_url, id, default_factory=default_factory, lazy_read=lazy_read, seq=seq)
+    def __init__(self, redis_url: Union[str, 'StrictRedis'], key_id: str, default_factory=lambda: dict(), lazy_read=True, seq=None):
+        super().__init__(redis_url, key_id, default_factory=default_factory, lazy_read=lazy_read, seq=seq)
 
     def __read_from_redis__(self, key):
         return RedisDict(self._redis, self.key2id(key))
@@ -198,20 +207,21 @@ class RedisDictStore(BaseRedisStore):
 
 class RedisSimpleStore(BaseRedisStore):
     """
-        Dictionary that store many values
+        Dictionary that store many values in Redis
         Every value is stored as json by his own key in Redis
-        When init - it's immediate read every keys from Redis occurred
-        All keys convert to json, so when reverse decoding int -> int, str -> str, tuple -> list -> tuple
+        Don't use 'lazy read' by default, immediate read all keys from Redis on initialization
+        keys converting to json, so it suitable for use tuple as keys,
+        tuple encoding to list when storing and decoding to tuple when reading
     """
 
     def key2id(self, key):
-        return f"{self.id}:{json.dumps(key)}"
+        return f"{self.key_id}:{json.dumps(key)}"
 
-    def id2key(self, id):
-        key = json.loads(id[len(self.id) + 1:])
+    def id2key(self, key_id):
+        key = json.loads(key_id[len(self.key_id) + 1:])
         if isinstance(key, list):
             key = tuple(key)
         return key
 
-    def __init__(self, redis_url, id, default_factory=lambda: 0, lazy_read=True, seq=None):
-        super().__init__(redis_url, id, default_factory=default_factory, lazy_read=lazy_read, seq=seq)
+    def __init__(self, redis_url: Union[str, 'StrictRedis'], key_id: str, default_factory=lambda: 0, lazy_read=True, seq=None):
+        super().__init__(redis_url, key_id, default_factory=default_factory, lazy_read=lazy_read, seq=seq)
